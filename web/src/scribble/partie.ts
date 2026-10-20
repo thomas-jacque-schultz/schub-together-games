@@ -1,0 +1,312 @@
+// Les règles du scribble (Schub#130). Elles tournent chez le meneur, qui diffuse l'état entier à chaque
+// changement : un joueur qui arrive le reçoit au suivant, et le joueur suivant reprend si le meneur part.
+
+export type Phase = "choix" | "dessin" | "bilan" | "fin";
+
+export interface Ligne {
+  joueur: string;
+  texte?: string;
+  trouve?: boolean;
+}
+
+export interface Partie {
+  phase: Phase;
+  lang: string;
+  duree: number;
+  ordre: string[];
+  tour: number;
+  dessinateur: string;
+  choix: string[];
+  mot: string | null;
+  revele: number[];
+  devineurs: string[];
+  trouve: string[];
+  scores: Record<string, number>;
+  noms: Record<string, string>;
+  fil: Ligne[];
+  restantMs: number;
+  reserve: string[];
+}
+
+export interface Present {
+  id: string;
+  name: string;
+}
+
+export const DUREES = [40, 60, 80, 100, 120];
+export const DUREE_DEFAUT = 80;
+export const CHOIX_MS = 15_000;
+export const BILAN_MS = 5_000;
+const FIL_MAX = 30;
+const POINTS_DEVINEUR = 50;
+const POINTS_DEVINEUR_RAPIDITE = 50;
+const POINTS_DESSINATEUR = 25;
+
+export type Hasard = () => number;
+
+/** Kai'Sa, kaisa et KAISA se valent : casse, accents, apostrophes, points et espaces ignorés. */
+export const normalise = (texte: string): string =>
+  texte
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+
+/** Distance d'édition, arrêtée dès qu'elle dépasse max. */
+export const distance = (a: string, b: string, max = 1): number => {
+  if (Math.abs(a.length - b.length) > max) {
+    return max + 1;
+  }
+  let precedente = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const ligne = [i];
+    for (let j = 1; j <= b.length; j++) {
+      ligne[j] = Math.min(
+        precedente[j] + 1,
+        ligne[j - 1] + 1,
+        precedente[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    if (Math.min(...ligne) > max) {
+      return max + 1;
+    }
+    precedente = ligne;
+  }
+  return precedente[b.length];
+};
+
+const estLettre = (caractere: string) => /[\p{L}\p{N}]/u.test(caractere);
+
+export const lettres = (mot: string): number =>
+  [...mot].filter(estLettre).length;
+
+/** Le mot tel que le voit qui devine : les lettres cachées, la ponctuation et les espaces visibles. */
+export const masque = (mot: string, revele: number[]): string =>
+  [...mot]
+    .map((caractere, index) =>
+      !estLettre(caractere) || revele.includes(index) ? caractere : "_",
+    )
+    .join("");
+
+const tire = (reserve: string[], n: number, hasard: Hasard) => {
+  const restants = [...reserve];
+  const tires: string[] = [];
+  while (tires.length < n && restants.length > 0) {
+    tires.push(...restants.splice(Math.floor(hasard() * restants.length), 1));
+  }
+  return { tires, restants };
+};
+
+const ajouteAuFil = (fil: Ligne[], ligne: Ligne): Ligne[] =>
+  [...fil, ligne].slice(-FIL_MAX);
+
+const manche = (
+  p: Partie,
+  tour: number,
+  presents: Present[],
+  hasard: Hasard,
+): Partie => {
+  const ids = presents.map((j) => j.id);
+  let suivant = tour;
+  while (suivant < p.ordre.length && !ids.includes(p.ordre[suivant])) {
+    suivant++;
+  }
+  const { tires, restants } = tire(p.reserve, 3, hasard);
+  if (suivant >= p.ordre.length || ids.length < 2 || tires.length === 0) {
+    return { ...p, phase: "fin", choix: [], restantMs: 0 };
+  }
+  return {
+    ...p,
+    phase: "choix",
+    tour: suivant,
+    dessinateur: p.ordre[suivant],
+    choix: tires,
+    mot: null,
+    revele: [],
+    devineurs: ids.filter((id) => id !== p.ordre[suivant]),
+    trouve: [],
+    restantMs: CHOIX_MS,
+    reserve: restants,
+  };
+};
+
+export const nouvellePartie = (
+  presents: Present[],
+  duree: number,
+  lang: string,
+  mots: string[],
+  hasard: Hasard,
+): Partie =>
+  manche(
+    {
+      phase: "choix",
+      lang,
+      duree,
+      ordre: presents.map((j) => j.id),
+      tour: 0,
+      dessinateur: presents[0]?.id ?? "",
+      choix: [],
+      mot: null,
+      revele: [],
+      devineurs: [],
+      trouve: [],
+      scores: Object.fromEntries(presents.map((j) => [j.id, 0])),
+      noms: Object.fromEntries(presents.map((j) => [j.id, j.name])),
+      fil: [],
+      restantMs: 0,
+      reserve: mots,
+    },
+    0,
+    presents,
+    hasard,
+  );
+
+export const choisir = (p: Partie, index: number): Partie => {
+  const mot = p.choix[index];
+  if (p.phase !== "choix" || mot === undefined) {
+    return p;
+  }
+  return {
+    ...p,
+    phase: "dessin",
+    mot,
+    reserve: [...p.reserve, ...p.choix.filter((_, i) => i !== index)],
+    choix: [],
+    restantMs: p.duree * 1000,
+  };
+};
+
+const bilan = (p: Partie): Partie => ({
+  ...p,
+  phase: "bilan",
+  restantMs: BILAN_MS,
+});
+
+/** proche : à une lettre du mot, à dire au seul joueur qui l'a tapé ; la réponse ne va pas dans le fil. */
+export const deviner = (
+  p: Partie,
+  joueur: string,
+  texte: string,
+): { partie: Partie; proche: boolean } => {
+  const propre = texte.trim().slice(0, 60);
+  if (
+    p.phase !== "dessin" ||
+    !p.mot ||
+    !propre ||
+    !p.devineurs.includes(joueur) ||
+    p.trouve.includes(joueur)
+  ) {
+    return { partie: p, proche: false };
+  }
+  const essai = normalise(propre);
+  const attendu = normalise(p.mot);
+  if (essai === attendu) {
+    const rapidite = p.restantMs / (p.duree * 1000);
+    const gain =
+      POINTS_DEVINEUR + Math.round(POINTS_DEVINEUR_RAPIDITE * rapidite);
+    const suite: Partie = {
+      ...p,
+      trouve: [...p.trouve, joueur],
+      scores: {
+        ...p.scores,
+        [joueur]: (p.scores[joueur] ?? 0) + gain,
+        [p.dessinateur]: (p.scores[p.dessinateur] ?? 0) + POINTS_DESSINATEUR,
+      },
+      fil: ajouteAuFil(p.fil, { joueur, trouve: true }),
+    };
+    return {
+      partie: p.devineurs.every((id) => suite.trouve.includes(id))
+        ? bilan(suite)
+        : suite,
+      proche: false,
+    };
+  }
+  if (distance(essai, attendu) <= 1) {
+    return { partie: p, proche: true };
+  }
+  return {
+    partie: { ...p, fil: ajouteAuFil(p.fil, { joueur, texte: propre }) },
+    proche: false,
+  };
+};
+
+// Une lettre à mi-temps, une autre aux trois quarts ; jamais plus d'un tiers du mot.
+const indices = (p: Partie, hasard: Hasard): number[] => {
+  if (!p.mot) {
+    return p.revele;
+  }
+  const ecoule = 1 - p.restantMs / (p.duree * 1000);
+  const voulu = (ecoule >= 0.5 ? 1 : 0) + (ecoule >= 0.75 ? 1 : 0);
+  const plafond = Math.floor(lettres(p.mot) / 3);
+  const cachees = [...p.mot]
+    .map((caractere, index) => (estLettre(caractere) ? index : -1))
+    .filter((index) => index >= 0 && !p.revele.includes(index));
+  const revele = [...p.revele];
+  while (revele.length < Math.min(voulu, plafond) && cachees.length > 0) {
+    revele.push(...cachees.splice(Math.floor(hasard() * cachees.length), 1));
+  }
+  return revele;
+};
+
+/** Le temps qui passe, chez le meneur : indices, fin de manche, manche suivante. */
+export const avancer = (
+  p: Partie,
+  ecouleMs: number,
+  presents: Present[],
+  hasard: Hasard,
+): Partie => {
+  if (p.phase === "fin") {
+    return p;
+  }
+  const restantMs = Math.max(0, p.restantMs - ecouleMs);
+  const suite: Partie = { ...p, restantMs };
+  if (p.phase === "choix") {
+    return restantMs === 0 ? choisir(suite, 0) : suite;
+  }
+  if (p.phase === "dessin") {
+    return restantMs === 0
+      ? bilan(suite)
+      : { ...suite, revele: indices(suite, hasard) };
+  }
+  return restantMs === 0 ? manche(suite, p.tour + 1, presents, hasard) : suite;
+};
+
+/**
+ * Qui arrive dessinera plus tard dans le tour et devinera dès la manche suivante. Un dessinateur parti clôt la
+ * manche, comme le départ du dernier qui n'avait pas trouvé.
+ */
+export const presence = (p: Partie, presents: Present[]): Partie => {
+  const ids = presents.map((j) => j.id);
+  const nouveaux = presents.filter((j) => !p.ordre.includes(j.id));
+  const suite: Partie = {
+    ...p,
+    ordre: [...p.ordre, ...nouveaux.map((j) => j.id)],
+    scores: {
+      ...Object.fromEntries(nouveaux.map((j) => [j.id, 0])),
+      ...p.scores,
+    },
+    noms: {
+      ...p.noms,
+      ...Object.fromEntries(presents.map((j) => [j.id, j.name])),
+    },
+    devineurs: p.devineurs.filter((id) => ids.includes(id)),
+  };
+  const enJeu = p.phase === "dessin" || p.phase === "choix";
+  const tousTrouve =
+    p.phase === "dessin" &&
+    suite.devineurs.every((id) => suite.trouve.includes(id));
+  if (enJeu && (!ids.includes(p.dessinateur) || tousTrouve)) {
+    return bilan(suite);
+  }
+  return suite;
+};
+
+export const estPartie = (data: unknown): data is Partie => {
+  const p = data as Partial<Partie> | null;
+  return (
+    typeof p?.phase === "string" &&
+    Array.isArray(p.ordre) &&
+    typeof p.scores === "object" &&
+    typeof p.restantMs === "number"
+  );
+};
