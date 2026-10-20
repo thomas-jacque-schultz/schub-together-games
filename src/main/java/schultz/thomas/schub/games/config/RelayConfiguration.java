@@ -21,9 +21,11 @@ public class RelayConfiguration implements WebSocketConfigurer {
     }
 
     // Seules les pages des jeux ouvrent un WebSocket : un autre site ne peut pas parler au relais au nom du joueur.
+    // Des motifs (https://*.premadelab.eu) : un nouveau jeu n'ajoute aucune origine.
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(handler, "/ws").setAllowedOrigins(properties.allowedOrigins().toArray(String[]::new));
+        registry.addHandler(handler, "/ws")
+                .setAllowedOriginPatterns(properties.allowedOrigins().toArray(String[]::new));
     }
 
     @Bean

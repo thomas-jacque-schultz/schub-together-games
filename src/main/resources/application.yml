@@ -13,8 +13,12 @@ management:
       exposure:
         include: health
 
+games:
+  files: ${GAMES_FILES:web/dist}
+  default-game: scribble
+
 relay:
-  allowed-origins: ${RELAY_ALLOWED_ORIGINS:https://scribble.premadelab.eu}
+  allowed-origins: ${RELAY_ALLOWED_ORIGINS:https://*.premadelab.eu}
   max-players: 10
   idle-timeout: 30m
   max-rooms: 500
