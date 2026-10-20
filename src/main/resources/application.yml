@@ -1,0 +1,23 @@
+server:
+  port: 8080
+  # Derrière le tunnel Cloudflare : l'adresse du joueur vient de CF-Connecting-IP.
+  forward-headers-strategy: native
+
+spring:
+  application:
+    name: together-games
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+relay:
+  allowed-origins: ${RELAY_ALLOWED_ORIGINS:https://scribble.premadelab.eu}
+  max-players: 10
+  idle-timeout: 30m
+  max-rooms: 500
+  history-limit-bytes: 2000000
+  rooms-per-address-per-hour: 20
+  message-max-bytes: 32768
