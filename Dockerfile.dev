@@ -1,12 +1,4 @@
-# Dev : les sources Java sont montées et relancées par spring-boot:run ; les pages des jeux sont construites
-# à l'image (un changement dans web/ demande un rebuild, comme avant pour le service des fronts).
-FROM node:22-alpine AS web
-WORKDIR /web
-COPY web/package*.json ./
-RUN npm ci
-COPY web/ ./
-RUN npm run build
-
+# Dev : les sources Java sont montées et relancées par spring-boot:run.
 FROM maven:3.9.9-eclipse-temurin-21
 
 WORKDIR /usr/src/app
@@ -17,7 +9,5 @@ COPY lombok.config .
 RUN mvn dependency:go-offline -B
 
 COPY src ./src
-COPY --from=web /web/dist /srv/games
-ENV GAMES_FILES=/srv/games
 
 CMD ["mvn", "spring-boot:run"]

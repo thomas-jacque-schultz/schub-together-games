@@ -22,15 +22,6 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Lint, test and build the games (web/)
-        working-directory: web
-        run: npm ci --ignore-scripts && npm run lint && npm test && npm run build
-
       - name: Build with Maven
         run: mvn clean package
 
