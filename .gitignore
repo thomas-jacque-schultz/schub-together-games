@@ -14,3 +14,6 @@ target/
 # jamais de secrets dans le repo
 .env
 *.env
+
+# Les pages des jeux vivent dans schub-front-servers (Schub#139) : plus rien à construire ici.
+web/
