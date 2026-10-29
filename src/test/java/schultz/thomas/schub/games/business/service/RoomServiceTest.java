@@ -73,6 +73,36 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("le meneur parti, le suivant mène ; l'ancien meneur qui revient ne reprend pas la main")
+    void meneurGardeLaMain() {
+        String code = cree("c1", "a");
+        rooms.join("c2", "ip2", code, "scribble", new Player("joueur-b1", "B"));
+
+        rooms.leave("c1");
+        assertThat(((RoomEvent.Presence) dernier("c2")).leader()).isEqualTo("joueur-b1");
+
+        rooms.join("c3", "ip1", code, "scribble", new Player("joueur-a1", "A"));
+        assertThat(((RoomEvent.Joined) dernier("c3")).leader()).isEqualTo("joueur-b1");
+        assertThat(((RoomEvent.Presence) dernier("c2")).leader()).isEqualTo("joueur-b1");
+    }
+
+    @Test
+    @DisplayName("un salon d'équipe s'ouvre au premier membre et garde son nom ; le suivant y entre")
+    void salonDEquipe() {
+        String salon = "0123456789abcdef01234567.76543210fedcba9876543210";
+        rooms.joinTeam("c1", salon, "macro", new Player("joueur-a1", "A"));
+        rooms.joinTeam("c2", salon, "macro", new Player("joueur-b1", "B"));
+
+        RoomEvent.Joined b = (RoomEvent.Joined) dernier("c2");
+        assertThat(b.room()).isEqualTo(salon);
+        assertThat(b.players()).extracting(Player::name).containsExactly("A", "B");
+        assertThat(b.leader()).isEqualTo("joueur-a1");
+
+        rooms.joinTeam("c3", salon, "scribble", new Player("joueur-c1", "C"));
+        assertThat(dernier("c3")).isEqualTo(new RoomEvent.Rejected(Reason.ROOM_NOT_FOUND));
+    }
+
+    @Test
     @DisplayName("un message gardé est relayé aux autres et rejoué à qui revient après un rechargement")
     void historiqueRejoue() {
         String code = cree("c1", "a");

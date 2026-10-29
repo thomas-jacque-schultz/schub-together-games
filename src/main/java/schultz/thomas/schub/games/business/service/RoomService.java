@@ -66,6 +66,32 @@ public class RoomService {
                 return;
             }
         }
+        assoit(connection, room, player);
+    }
+
+    // Un salon d'équipe : son nom vient de l'équipe et du plan, il s'ouvre au premier membre arrivé. Le laissez-passer
+    // a été vérifié avant.
+    public synchronized void joinTeam(String connection, String code, String game, Player player) {
+        Room room = rooms.get(code);
+        if (room == null) {
+            if (rooms.size() >= limits.maxRooms()) {
+                reject(connection, Reason.TOO_MANY_ROOMS);
+                return;
+            }
+            room = new Room(code, game, clock.instant());
+            rooms.put(code, room);
+            log.info("Salon d'équipe ({}) ouvert, {} salons ouverts", game, rooms.size());
+        } else if (!room.game().equals(game)) {
+            reject(connection, Reason.ROOM_NOT_FOUND);
+            return;
+        } else if (!room.hasSeat(player.id()) && room.connectedCount() >= limits.maxPlayers()) {
+            reject(connection, Reason.ROOM_FULL);
+            return;
+        }
+        assoit(connection, room, player);
+    }
+
+    private void assoit(String connection, Room room, Player player) {
         quitte(connection);
         room.seat(player, connection).ifPresent(remplacee -> {
             parConnexion.remove(remplacee);
