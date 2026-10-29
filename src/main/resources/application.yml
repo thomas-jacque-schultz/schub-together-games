@@ -6,6 +6,9 @@ server:
 spring:
   application:
     name: together-games
+  # Le secret interne, monté en fichier par Swarm : il signe les laissez-passer des salons d'équipe (Schub#171).
+  config:
+    import: optional:configtree:/run/secrets/
 
 management:
   endpoints:
@@ -14,10 +17,12 @@ management:
         include: health
 
 relay:
-  allowed-origins: ${RELAY_ALLOWED_ORIGINS:https://*.premadelab.eu}
+  # premadelab.eu : le Macro Planner d'une équipe (Schub#171) passe par le /ws du site.
+  allowed-origins: ${RELAY_ALLOWED_ORIGINS:https://premadelab.eu,https://*.premadelab.eu}
   max-players: 10
   idle-timeout: 30m
   max-rooms: 500
   history-limit-bytes: 2000000
   rooms-per-address-per-hour: 20
   message-max-bytes: 32768
+  pass-secret: ${SCHUB_INTERNAL_SECRET:}
