@@ -7,3 +7,5 @@ Les pages des jeux vivent dans le front (`schub-front-servers`, `src/games/`, Sc
 Ajouter un jeu ne touche pas ce dépôt. En dev, `dev-<jeu>.premadelab.eu` demande un enregistrement DNS et une règle du tunnel.
 
 En local : `mvn spring-boot:run`, puis `npm run dev` dans le front, avec `RELAY_URL=ws://localhost:8080`.
+
+Les salons d'équipe du Macro Planner de PremadeLab (Schub#171) passent par le même `/ws`, depuis `premadelab.eu`. Ils ne s'ouvrent qu'avec un laissez-passer signé par le BFF pour un membre de l'équipe ; la clé est dérivée du secret interne (`SCHUB_INTERNAL_SECRET`, lu en fichier sous `/run/secrets` en prod). Sans secret, ces salons restent fermés.

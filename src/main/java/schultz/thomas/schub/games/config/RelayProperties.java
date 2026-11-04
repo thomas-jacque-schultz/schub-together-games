@@ -7,5 +7,6 @@ import java.util.List;
 
 @ConfigurationProperties("relay")
 public record RelayProperties(List<String> allowedOrigins, int maxPlayers, Duration idleTimeout, int maxRooms,
-                              long historyLimitBytes, int roomsPerAddressPerHour, int messageMaxBytes) {
+                              long historyLimitBytes, int roomsPerAddressPerHour, int messageMaxBytes,
+                              String passSecret) {
 }

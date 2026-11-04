@@ -29,6 +29,7 @@ public sealed interface RoomEvent {
         RATE_LIMITED,
         NOT_IN_ROOM,
         ROOM_EXPIRED,
-        REPLACED
+        REPLACED,
+        FORBIDDEN
     }
 }

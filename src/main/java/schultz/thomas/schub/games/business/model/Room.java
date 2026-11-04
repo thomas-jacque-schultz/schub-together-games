@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-// Un salon en mémoire. Les joueurs gardent leur ordre d'arrivée : le premier encore là mène la partie.
+// Un salon en mémoire. Le meneur garde la main tant qu'il est là ; s'il part, elle passe au plus ancien encore là, et
+// il ne la reprend pas en revenant : en rechargeant la page, il a perdu l'état de la partie.
 public class Room {
 
     private final String code;
@@ -19,6 +20,7 @@ public class Room {
     private final Deque<Payload> history = new ArrayDeque<>();
     private long historyBytes;
     private Instant lastActivity;
+    private String leader;
 
     public Room(String code, String game, Instant now) {
         this.code = code;
@@ -56,13 +58,11 @@ public class Room {
 
     // La connexion qu'avait ce joueur, s'il était déjà assis : elle est remplacée.
     public Optional<String> seat(Player player, String connection) {
-        Seat ancien = seats.get(player.id());
-        if (ancien != null) {
-            seats.put(player.id(), new Seat(player, connection));
-            return Optional.ofNullable(ancien.connection()).filter(c -> !c.equals(connection));
+        Seat ancien = seats.put(player.id(), new Seat(player, connection));
+        if (leader == null) {
+            leader = player.id();
         }
-        seats.put(player.id(), new Seat(player, connection));
-        return Optional.empty();
+        return Optional.ofNullable(ancien).map(Seat::connection).filter(c -> !c.equals(connection));
     }
 
     public Optional<String> playerOf(String connection) {
@@ -72,6 +72,9 @@ public class Room {
 
     public void disconnect(String connection) {
         seats.replaceAll((id, seat) -> connection.equals(seat.connection()) ? new Seat(seat.player(), null) : seat);
+        if (leader != null && seats.get(leader).connection() == null) {
+            leader = players().stream().findFirst().map(Player::id).orElse(null);
+        }
     }
 
     public List<Player> players() {
@@ -79,7 +82,7 @@ public class Room {
     }
 
     public String leader() {
-        return players().stream().findFirst().map(Player::id).orElse(null);
+        return leader;
     }
 
     public List<String> connections() {

@@ -12,7 +12,10 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import schultz.thomas.schub.games.business.service.TeamPassVerifierTest;
+
 import java.net.URI;
+import java.time.Instant;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "relay.allowed-origins=https://scribble.premadelab.eu")
+        properties = {"relay.allowed-origins=https://scribble.premadelab.eu,https://premadelab.eu",
+                "relay.pass-secret=secret-de-test"})
 class RelayEndToEndTest {
 
     private static final String ORIGINE = "https://scribble.premadelab.eu";
@@ -52,6 +56,27 @@ class RelayEndToEndTest {
         b2.envoie("{\"type\":\"join\",\"room\":\"" + code + "\",\"game\":\"scribble\","
                 + "\"player\":{\"id\":\"joueur-bbbb\",\"name\":\"B\"}}");
         assertThat(b2.attend("joined").get("history").get(0).get("trait")).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("un salon d'équipe ne s'ouvre qu'avec le laissez-passer de l'équipe")
+    void salonDEquipe() throws Exception {
+        String salon = TeamPassVerifierTest.EQUIPE + "." + TeamPassVerifierTest.PLAN;
+        String join = "{\"type\":\"join\",\"game\":\"macro\",\"room\":\"" + salon + "\",\"pass\":\"%s\","
+                + "\"player\":{\"id\":\"joueur-%s\",\"name\":\"%s\"}}";
+
+        Client intrus = connecte("https://premadelab.eu");
+        intrus.envoie(join.formatted("faux.faux", "cccc", "C"));
+        assertThat(intrus.attend("error").get("code").asText()).isEqualTo("FORBIDDEN");
+
+        String pass = TeamPassVerifierTest.signe("secret-de-test", TeamPassVerifierTest.EQUIPE,
+                Instant.now().plusSeconds(600));
+        Client a = connecte("https://premadelab.eu");
+        a.envoie(join.formatted(pass, "aaaa", "A"));
+        assertThat(a.attend("joined").get("room").asText()).isEqualTo(salon);
+        Client b = connecte("https://premadelab.eu");
+        b.envoie(join.formatted(pass, "bbbb", "B"));
+        assertThat(b.attend("joined").get("players")).hasSize(2);
     }
 
     @Test
